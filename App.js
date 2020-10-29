@@ -19,6 +19,7 @@ class App extends React.Component {
     this.state = {
       shopId: '',
       shopName: '',
+      selectedShopId: '',
       modalVisible: false,
       shops : [{id: '1', title: 'X'}, {id: '2', title: 'XY'}, {id: '3', title: 'XYZ'}, {id: '4', title: 'A'},],
       items: [{
@@ -44,8 +45,19 @@ class App extends React.Component {
 
   showItemsInShop = (navigation, id) => {
     const item = this.state.items.find(item => item.shopId === id)
-    this.setState({...this.state, selectedShopItems: item && item.shopItems ? item.shopItems : []})
+    this.setState({...this.state, selectedShopId: id, selectedShopItems: item && item.shopItems ? item.shopItems : []})
     navigation.navigate('Items', {});
+  }
+
+  setSelectedShopsItems = (newItems) => {
+    const {selectedShopItems, items, selectedShopId} = this.state;
+    const newShopItems = [...selectedShopItems, ...newItems.map(item => ({id: item, title: 'test-item'}))];
+    const updatedItems = items.map(item => {
+      if (item.shopId === selectedShopId)
+        item.shopItems = newShopItems
+      return item
+    })
+    this.setState({...this.state, selectedShopItems: newShopItems ,items: updatedItems})
   }
 
   render() {
@@ -130,7 +142,7 @@ class App extends React.Component {
             },
           }}
         >
-        {props => <CodeScanner {...props} />}
+        {props => <CodeScanner {...props} setScannedItems = {this.setSelectedShopsItems} />}
         </Stack.Screen>
       </Stack.Navigator>
       <Modal

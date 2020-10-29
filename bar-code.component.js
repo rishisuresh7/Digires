@@ -1,13 +1,13 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useRef} from 'react';
 import { StyleSheet, Modal, Text, TouchableHighlight, View } from 'react-native';
 import { BarCodeScanner } from 'expo-barcode-scanner';
 
-const CodeScanner = () => {
+const CodeScanner = ({setScannedItems}) => {
     const [hasPermission, setHasPermission] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
     const [scanned, setScanned] = useState(false);
     const [scannedData, setScannedData] = useState('');
-    let items = [];
+    const [items, setItems] = useState([]);
 
     useEffect(() => {
         (async () => {
@@ -18,22 +18,21 @@ const CodeScanner = () => {
         })();
       }, []);
 
-    const showItems = () => {
-        console.log(items);
-    }
+    useEffect(() => {
+        return () => {
+            setScannedItems([...items]);
+        }
+    }, [items])
 
     const handleBarCodeScanned = ({ data }) => {
         setScanned(true);
         if (!items.includes(data)) {
-            items.push(data);
+            setItems([...items, data]);
             setScannedData('Scanned : ' + data);
         } else {
             setScannedData('Item already present');
         }
 
-        if (items.length > 3) {
-            showItems();
-        }
         setModalVisible(!modalVisible);
     };
 
