@@ -47,9 +47,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    uploadIcon: {
+        position: 'absolute',
+        bottom: 30,
+        borderWidth: 1,
+        borderColor: 'white',
+        height: 40,
+        width: 100,
+        borderRadius: 20,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+    }
 }) 
 
-const ListView = ({navigation, route: {params}, data, press, deleteShop}) => {
+const ListView = ({navigation, route: {params}, data, press, deleteShop, save}) => {
     const [selectedShop, setSelectedShop] = useState('');
     const [items, setItems] = useState([]);
     const {showDelete} = params;
@@ -57,6 +69,11 @@ const ListView = ({navigation, route: {params}, data, press, deleteShop}) => {
         press = () => {}
     }
 
+    if (!save) {
+        save = () => {}
+    }
+
+    styles.fullScreenStyles = showDelete ? {marginTop: -100, height: 0.8 * Dimensions.get('window').height} : {}
     useEffect(() => {
         setItems(data);
     }, [data])
@@ -67,6 +84,7 @@ const ListView = ({navigation, route: {params}, data, press, deleteShop}) => {
           flex: 1,
           display: 'flex',
           width: Dimensions.get('window').width,
+          height: Dimensions.get('window').height,
           flexDirection: 'column',
           padding: 0,
           margin: 0,
@@ -75,19 +93,28 @@ const ListView = ({navigation, route: {params}, data, press, deleteShop}) => {
           justifyContent: 'center',
         }}>
 
-        <FlatList
-            data={items}
-            renderItem={({item}) => 
-                <TouchableOpacity onPress={() => {setSelectedShop(item.id); press(navigation, item.id)}}  style={styles.listItem}>
-                    <Text style={styles.title}>{item.title.length > 25 ? item.title.substring(0, 25) + '...' : item.title}</Text>
-                    {
-                        showDelete ? 
-                        <TouchableOpacity onPress={ () => deleteShop(item.id)} style={styles.deleteIcon}><Text style={{color: 'red', fontSize: 10}}>X</Text></TouchableOpacity>:
-                        null
-                    }
-                </TouchableOpacity>
-            }
-        />
+        <View style={styles.fullScreenStyles}>
+            <FlatList
+                data={items}
+                renderItem={({item}) => 
+                    <TouchableOpacity onPress={() => {setSelectedShop(item.id); press(navigation, item.id)}}  style={styles.listItem}>
+                        <Text style={styles.title}>{item.title.length > 25 ? item.title.substring(0, 25) + '...' : item.title}</Text>
+                        {
+                            showDelete ? 
+                            <TouchableOpacity onPress={ () => deleteShop(item.id)} style={styles.deleteIcon}><Text style={{color: 'red', fontSize: 10}}>X</Text></TouchableOpacity>:
+                            null
+                        }
+                    </TouchableOpacity>
+                }
+            />
+        </View>
+        {
+            showDelete?
+            <TouchableOpacity style={styles.uploadIcon} onPress= { () => save()}>
+                <Text style={{color: 'white', fontSize: 13}}>Save</Text>
+            </TouchableOpacity>:
+            null
+        }
       </View>
     )
 }

@@ -1,9 +1,12 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Dimensions, Text, TouchableOpacity, View, Modal, TextInput} from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import * as SQLite from 'expo-sqlite';
+import * as FS from 'expo-file-system';
+import * as ML from 'expo-media-library';
+import * as Permissions from 'expo-permissions';
 
 import ListView from './list-view.component';
 import CodeScanner from './bar-code.component';
@@ -21,43 +24,175 @@ class App extends React.Component {
       shopName: '',
       selectedShopId: '',
       modalVisible: false,
-      shops : [{id: '1', title: 'X'}, {id: '2', title: 'XY'}, {id: '3', title: 'XYZ'}, {id: '4', title: 'A'},],
-      items: [{
-        shopId: '1',
-        shopItems: [{id: '1', title:'shop 1 item 1'}, {id: '2', title:'shop 1 item 2'}]
-      },
-      {
-        shopId: '2',
-        shopItems: [{id: '1', title:'shop 2 item 1'}]
-      },
-      {
-        shopId: '3',
-        shopItems: [{id: '1', title:'shop 3 item 1'}]
-      }],
+      dbShops: [],
+      dbItems: [],
+      shops : [],
+      items: [],
       selectedShopItems: [],
     }
   }
 
+  clean = () => {
+    db.transaction(
+      tx => {
+        tx.executeSql('DROP TABLE SHOPS', [], () => console.log('Deleted all entries from shops'), (_, err) => console.log('error deleting entries: ' + err))
+        tx.executeSql('DROP TABLE ITEMS', [], () => console.log('Deleted all entries from items'), (_, err) => console.log('error deleting entries: ' + err))
+      },
+      (error) => {
+        console.log('error :' + error);
+      },
+      () => {
+        console.log('success: clean successful');
+      }
+    )
+  }
+  componentDidMount() {
+    //this.clean();
+    (async () => {
+      await Permissions.askAsync(Permissions.CAMERA_ROLL);
+    })()
+    this.createTables();
+    let data = [];
+    db.transaction(
+      tx => {
+        tx.executeSql(`SELECT shop_id as id, name as title FROM SHOPS`, [], (_, {rows}) => {
+          let ids = [], shopItems = [];
+          rows._array.map(row => {
+            ids.push(row.id);
+            shopItems.push({shopId: row.id, shopItems: []});
+          });
+          data = ids;
+          this.setState({shops: rows._array, dbShops: ids});
+          tx.executeSql(`SELECT item_id as itemId, shop_id as shopId FROM ITEMS`, [], (_, {rows}) => {
+            let dbItems = [];
+            rows._array.map(row => {
+              let shopItem = shopItems.find(item => item.shopId == row.shopId);
+              dbItems.push(row.itemId);
+              data.map(item => {
+                if(row.shopId == item) {
+                  shopItem.shopItems.push({id: row.itemId, title: row.itemId});
+                }
+              })
+            });
+            this.setState({items: shopItems, dbItems: dbItems});
+          }, {})
+        }, {})
+      },
+      (error) => {
+        console.log('error :' + error);
+      },
+      () => {
+        console.log('success: query items successful');
+      }
+    )
+  }
+
+  insertShop = (id, name) => {
+    db.transaction(
+      tx => {
+        tx.executeSql('INSERT INTO SHOPS(shop_id, name) VALUES(?, ?)', [parseInt(id), name], {}, {});
+      },
+      (error) => {
+        alert('Unexpected error happened : ' + error);
+      },
+      () => {
+        alert('Successfully updated shops');
+      }
+    )
+  }
+
+  save = () => {
+    const {items} = this.state;
+    items.map(item => {
+      (async ()=> {
+        const file = FS.cacheDirectory + `shopId_${item.shopId}.csv`;
+        let data = '';
+        item.shopItems.map(shopItem => {
+          data += shopItem.id + ',\n';
+        });
+        await FS.deleteAsync(file, {idempotent: true});
+        await FS.writeAsStringAsync(file, data);
+        const asset = await ML.createAssetAsync(file);
+        await ML.createAlbumAsync("Download", asset, false);
+      })()
+    });
+    alert('File(s) saved successfully')
+  }
+
+  createTables = () => {
+    db.transaction(
+      tx => {
+        tx.executeSql('CREATE TABLE IF NOT EXISTS SHOPS(shop_id integer primary key not null, name text)', [], {}, {})
+        tx.executeSql('CREATE TABLE IF NOT EXISTS ITEMS(item_id integer not null, shop_id integer, Foreign key(shop_id) references SHOPS(shop_id))', [], {}, {})
+      },
+      (error) => {
+        console.log('error :' + error);
+      },
+      () => {
+        db.exec([{ sql: 'PRAGMA foreign_keys = ON;', args: [] }], false, () => console.log('Foreign keys turned on'));
+        console.log('successfully created tables');
+      }
+    )
+  }
+
   deleteShop = (id) => {
     const {shops} = this.state;
+    db.transaction(
+      tx => {
+        tx.executeSql(`DELETE FROM ITEMS WHERE shop_id = ?`, [id], {}, {})
+        tx.executeSql(`DELETE FROM SHOPS WHERE shop_id = ?`, [id], {}, {})
+      },
+      (error) => {
+        console.log('error :' + error);
+      },
+      () => {
+        alert('Shop Deleted Successfully');
+      }
+    )
     this.setState({...this.state, shops: shops.filter(item => item.id != id)})
   }
 
   showItemsInShop = (navigation, id) => {
-    const item = this.state.items.find(item => item.shopId === id)
-    this.setState({...this.state, selectedShopId: id, selectedShopItems: item && item.shopItems ? item.shopItems : []})
-    navigation.navigate('Items', {});
+    let data = [];
+    db.transaction(
+      tx => {
+        tx.executeSql(`SELECT DISTINCT item_id as id FROM ITEMS WHERE shop_id = ?`, [id], (_, {rows}) => {
+          data = rows._array.map(item => ({id: item.id, title: item.id}));
+          this.setState({...this.state, selectedShopId: id, selectedShopItems: data})
+          navigation.navigate('Items', {});
+        }, {})
+      },
+      (error) => {
+        console.log('error :' + error);
+      },
+      () => {
+        console.log(`Shop ${id} items fetched Successfully`);
+      }
+    )
   }
 
   setSelectedShopsItems = (newItems) => {
     const {selectedShopItems, items, selectedShopId} = this.state;
-    const newShopItems = [...selectedShopItems, ...newItems.map(item => ({id: item, title: 'test-item'}))];
+    const newShopItems = [...selectedShopItems, ...newItems.map(item => ({id: item, title: item}))];
     const updatedItems = items.map(item => {
       if (item.shopId === selectedShopId)
         item.shopItems = newShopItems
       return item
     })
     this.setState({...this.state, selectedShopItems: newShopItems ,items: updatedItems})
+    newShopItems.map(item => {
+      db.transaction(
+        tx => {
+          tx.executeSql(`INSERT INTO ITEMS(item_id, shop_id) VALUES(?, ?)`, [parseInt(item.id), selectedShopId], {}, {});
+        },
+        (error) => {
+          console.log('error :' + error);
+        },
+        () => {
+          console.log('Successfully inserted items');
+        }
+      )
+    })
   }
 
   render() {
@@ -97,7 +232,7 @@ class App extends React.Component {
         }}
         initialParams = {{ showDelete: true}}
         >
-          {(props) => <ListView {...props} data={shops} press= {this.showItemsInShop} deleteShop={this.deleteShop} />}
+          {(props) => <ListView {...props} data={shops} press= {this.showItemsInShop} save={this.save} deleteShop={this.deleteShop} />}
         </Stack.Screen>
         <Stack.Screen name='Items' options={{
           title: 'Items',
@@ -171,7 +306,16 @@ class App extends React.Component {
                     />
                     <TouchableOpacity
                         onPress={() => {
-                            this.setState({modalVisible: false, shopId: '', shopName: '', shops: [...this.state.shops, {id: shopId, title: shopName}]});
+                            if (shopId != "" && shopName != "") {
+                              if (!shops.some(shop => shop.id === shopId)) {
+                                this.insertShop(shopId, shopName);
+                                this.setState({modalVisible: false, shopId: '', shopName: '', shops: [...shops, {id: shopId, title: shopName}]});
+                              } else {
+                                alert('Shop Id already present');
+                              }
+                            } else {
+                              this.setState({modalVisible: false});
+                            }
                         }}>
                         <Text style={styles.textStyle}>Done</Text>
                     </TouchableOpacity>
